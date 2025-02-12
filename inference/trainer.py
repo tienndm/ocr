@@ -11,13 +11,26 @@ from data_pipeline.dataset import SymbolicOCRDataset
 from models.ocr import OCRTransformer
 from torch.amp import autocast, GradScaler
 
+
 def generate_square_subsequent_mask(sz):
     mask = torch.triu(torch.ones(sz, sz), diagonal=1)
-    mask = mask.masked_fill(mask == 1, float('-inf'))
+    mask = mask.masked_fill(mask == 1, float("-inf"))
     return mask
 
+
 class Trainer:
-    def __init__(self, rootDir, batchSize, numWorkers, vocabPath=None):
+    def __init__(
+        self,
+        rootDir,
+        batchSize,
+        numWorkers,
+        vocabPath=None,
+        dModel: int = 768,
+        encoderDepth: int = 12,
+        decoderDepth: int = 6,
+        encoderNumHeads: int = 12,
+        decoderNumHeads: int = 8,
+    ):
         self.dataset = SymbolicOCRDataset(rootDir, freqThreshold=1)
         if vocabPath and os.path.exists(vocabPath):
             self.load_vocab(vocabPath)
@@ -43,15 +56,25 @@ class Trainer:
             num_workers=numWorkers,
         )
 
-        self.model = OCRTransformer(vocabSize=len(self.dataset.vocab), dropout=0.5)
+        self.model = OCRTransformer(
+            vocabSize=len(self.dataset.vocab),
+            dropout=0.5,
+            dModel=dModel,
+            encoderDepth=encoderDepth,
+            decoderDepth=decoderDepth,
+            encoderNumHeads=encoderNumHeads,
+            decoderNumHeads=decoderNumHeads,
+        )
         self.model.to("cuda")
         self.optimizer = Adam(self.model.parameters(), lr=1e-5)
         self.scheduler = StepLR(self.optimizer, step_size=10, gamma=0.1)
         self.criterion = torch.nn.CrossEntropyLoss(
             ignore_index=self.dataset.vocab.stoi["<PAD>"]
         )
-        self.best_val_loss = float('inf')
-        self.scaler = GradScaler(device="cuda")  # Initialize GradScaler for mixed precision
+        self.best_val_loss = float("inf")
+        self.scaler = GradScaler(
+            device="cuda"
+        )  # Initialize GradScaler for mixed precision
 
     def train(self):
         self.model.train()
@@ -67,9 +90,7 @@ class Trainer:
             )
             self.optimizer.zero_grad()
             with autocast(device_type="cuda"):
-                outputs = self.model(
-                    imgs, caps[:, :-1], tgtMask, tgtKeyPaddingMask
-                )
+                outputs = self.model(imgs, caps[:, :-1], tgtMask, tgtKeyPaddingMask)
                 loss = self.criterion(
                     outputs.view(-1, outputs.size(-1)), caps[:, 1:].reshape(-1)
                 )
@@ -96,9 +117,7 @@ class Trainer:
                     tgtMask.to("cuda"),
                     tgtKeyPaddingMask.to("cuda", dtype=torch.bool),
                 )
-                outputs = self.model(
-                    imgs, caps[:, :-1], tgtMask, tgtKeyPaddingMask
-                )
+                outputs = self.model(imgs, caps[:, :-1], tgtMask, tgtKeyPaddingMask)
                 loss = self.criterion(
                     outputs.view(-1, outputs.size(-1)), caps[:, 1:].reshape(-1)
                 )
@@ -108,7 +127,9 @@ class Trainer:
                 target_labels = caps[:, 1:]
                 non_pad_mask = target_labels != self.dataset.vocab.stoi["<PAD>"]
 
-                total_correct += (preds == target_labels).masked_select(non_pad_mask).sum().item()
+                total_correct += (
+                    (preds == target_labels).masked_select(non_pad_mask).sum().item()
+                )
                 total_tokens += non_pad_mask.sum().item()
 
         avg_loss = valLoss / len(self.valDataloader)
@@ -118,7 +139,7 @@ class Trainer:
 
         if avg_loss < self.best_val_loss:
             self.best_val_loss = avg_loss
-            torch.save(self.model.state_dict(), 'best_model.pth')
+            torch.save(self.model.state_dict(), "best_model.pth")
             print("Best model saved with validation loss: {:.4f}".format(avg_loss))
 
     def generate_caption(self, img, max_length=100):
@@ -129,7 +150,9 @@ class Trainer:
         generated = [self.dataset.vocab.stoi["<SOS>"]]
         with torch.no_grad():
             for _ in range(max_length):
-                tgt = torch.tensor(generated, dtype=torch.long).unsqueeze(0).to("cuda")  # shape: [1, seq_len]
+                tgt = (
+                    torch.tensor(generated, dtype=torch.long).unsqueeze(0).to("cuda")
+                )  # shape: [1, seq_len]
                 # Use all but the last token as input if sequence >1
                 if tgt.size(1) > 1:
                     tgt_input = tgt[:, :-1]  # exclude the predicted token position
@@ -186,7 +209,10 @@ class Trainer:
             self.train()
             self.eval()
 
+
 if __name__ == "__main__":
-    trainer = Trainer(rootDir="data", batchSize=1, numWorkers=1, vocabPath="data/vocab/vocab.json")
+    trainer = Trainer(
+        rootDir="data", batchSize=1, numWorkers=1, vocabPath="data/vocab/vocab.json"
+    )
     trainer(20)
     trainer.evaluate_auto_regressive(num_samples=5)
