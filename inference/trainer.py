@@ -44,6 +44,9 @@ class Trainer:
         )
 
         self.model = OCRTransformer(vocabSize=len(self.dataset.vocab), dropout=0.5)
+        # Auto-detect and use multiple GPUs if available
+        if torch.cuda.device_count() > 1:
+            self.model = nn.DataParallel(self.model)
         self.model.to("cuda")
         self.optimizer = Adam(self.model.parameters(), lr=1e-5)
         self.scheduler = StepLR(self.optimizer, step_size=10, gamma=0.1)
@@ -118,7 +121,9 @@ class Trainer:
 
         if avg_loss < self.best_val_loss:
             self.best_val_loss = avg_loss
-            torch.save(self.model.state_dict(), 'best_model.pth')
+            # Save model state considering DataParallel wrapper
+            model_state = self.model.module.state_dict() if hasattr(self.model, "module") else self.model.state_dict()
+            torch.save(model_state, 'best_model.pth')
             print("Best model saved with validation loss: {:.4f}".format(avg_loss))
 
     def generate_caption(self, img, max_length=100):
