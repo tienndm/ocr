@@ -9,7 +9,7 @@ from tqdm import tqdm
 from data_pipeline.utils import collate_fn
 from data_pipeline.dataset import SymbolicOCRDataset
 from models.ocr import OCRTransformer
-from torch.amp import autocast, GradScaler
+from torch.cuda.amp import autocast, GradScaler
 
 
 def generate_square_subsequent_mask(sz):
@@ -72,9 +72,7 @@ class Trainer:
             ignore_index=self.dataset.vocab.stoi["<PAD>"]
         )
         self.best_val_loss = float("inf")
-        self.scaler = GradScaler(
-            device="cuda"
-        )  # Initialize GradScaler for mixed precision
+        self.scaler = GradScaler()
 
     def train(self):
         self.model.train()
@@ -89,7 +87,7 @@ class Trainer:
                 tgtKeyPaddingMask.to("cuda", dtype=torch.bool),
             )
             self.optimizer.zero_grad()
-            with autocast(device_type="cuda"):
+            with autocast():
                 outputs = self.model(imgs, caps[:, :-1], tgtMask, tgtKeyPaddingMask)
                 loss = self.criterion(
                     outputs.view(-1, outputs.size(-1)), caps[:, 1:].reshape(-1)
