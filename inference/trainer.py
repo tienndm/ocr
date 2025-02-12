@@ -30,6 +30,7 @@ class Trainer:
         decoderDepth: int = 6,
         encoderNumHeads: int = 12,
         decoderNumHeads: int = 8,
+        dropout: float = 0.1,
     ):
         self.dataset = SymbolicOCRDataset(rootDir, freqThreshold=1)
         if vocabPath and os.path.exists(vocabPath):
@@ -37,7 +38,7 @@ class Trainer:
         elif vocabPath:
             self.dataset.save_vocab(self.dataset.vocab, vocabPath)
 
-        trainSize = int(0.8 * len(self.dataset))
+        trainSize = int(0.9 * len(self.dataset))
         valSize = len(self.dataset) - trainSize
         self.trainDataset, self.valDataset = random_split(
             self.dataset, [trainSize, valSize]
@@ -58,7 +59,7 @@ class Trainer:
 
         self.model = OCRTransformer(
             vocabSize=len(self.dataset.vocab),
-            dropout=0.5,
+            dropout=dropout,
             dModel=dModel,
             encoderDepth=encoderDepth,
             decoderDepth=decoderDepth,
@@ -176,7 +177,7 @@ class Trainer:
         self.model.eval()
         samples_evaluated = 0
         with torch.no_grad():
-            for imgs, caps, _, _, _ in self.valDataloader:
+            for imgs, caps, _, _ in self.valDataloader:
                 for i in range(imgs.size(0)):
                     img = imgs[i].unsqueeze(0).to("cuda")  # [1, C, H, W]
                     predicted_tokens = self.generate_caption(img)
@@ -206,6 +207,7 @@ class Trainer:
             print(f"Epoch {epoch + 1}/{numEpochs}")
             self.train()
             self.eval()
+            self.evaluate_auto_regressive(num_samples=1)
 
 
 if __name__ == "__main__":
