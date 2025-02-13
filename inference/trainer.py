@@ -9,6 +9,7 @@ from tqdm import tqdm
 from data_pipeline.utils import collate_fn, generateSquareSubsequentMask
 from data_pipeline.dataset import SymbolicOCRDataset
 from models.ocr import OCRTransformer
+from models.label_smoothing import LabelSmoothingLoss
 from torch.cuda.amp import autocast, GradScaler
 
 
@@ -31,9 +32,11 @@ class Trainer:
         lr: float = 1e-5,
         schedule: bool = False,
         mixedPrecision: bool = False,
+        numFirstPhaseEpochs: int = 100,
     ):
         self.schedule = schedule
         self.mixedPrecision = mixedPrecision
+        self.numFirstPhaseEpochs = numFirstPhaseEpochs
 
         self.dataset = SymbolicOCRDataset(rootDir, freqThreshold=1)
         if vocabPath and os.path.exists(vocabPath):
@@ -77,8 +80,13 @@ class Trainer:
         if self.schedule:
             self.scheduler = StepLR(self.optimizer, step_size=10, gamma=0.1)
         
-        self.criterion = torch.nn.CrossEntropyLoss(
-            ignore_index=self.dataset.vocab.stoi["<PAD>"]
+        # self.criterion = torch.nn.CrossEntropyLoss(
+        #     ignore_index=self.dataset.vocab.stoi["<PAD>"]
+        # )
+        self.criterion = LabelSmoothingLoss(
+            classes=len(self.dataset.vocab),
+            smoothing=0.1,
+            ignore_index=self.dataset.vocab.stoi["<PAD>"],
         )
         self.best_val_loss = float("inf")
         if self.mixedPrecision:
@@ -222,12 +230,19 @@ class Trainer:
         self.dataset.vocab.stoi = stoi
         self.dataset.vocab.itos = itos
 
+    def freezeEncoder(self):
+        for param in self.model.encoder.parameters():
+            param.requires_grad = False
+        self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()))
+
     def __call__(self, numEpochs):
         for epoch in range(numEpochs):
             print(f"Epoch {epoch + 1}/{numEpochs}")
             self.train()
             self.eval()
             self.evaluate_auto_regressive(num_samples=3)
+            if epoch == self.numFirstPhaseEpochs:
+                self.freezeEncoder()
 
 
 if __name__ == "__main__":
