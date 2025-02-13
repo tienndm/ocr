@@ -1,6 +1,9 @@
 import os
 import torch
 import pandas as pd
+import csv
+import sys
+csv.field_size_limit(sys.maxsize)
 
 from torch.utils.data import Dataset
 from PIL import Image
@@ -35,7 +38,7 @@ class SymbolicOCRDataset(Dataset):
     def __getitem__(self, idx):
         imgName = self.df.iloc[idx, 0]
         imgPath = os.path.join(self.imgDir, imgName)
-        img = Image.open(imgPath+".bmp").convert("RGB")
+        img = Image.open(imgPath).convert("RGB")
         tgt = self.df.iloc[idx, 1]
 
         if self.transform:
