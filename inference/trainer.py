@@ -75,10 +75,10 @@ class Trainer:
         self.optimizer = Adam(self.model.parameters(), lr=lr)
         if self.schedule:
             self.scheduler = StepLR(self.optimizer, step_size=10, gamma=0.1)
-        self.criterion = LabelSmoothingLoss(
-            classes=len(self.dataset.vocab),
-            smoothing=0.1,
+        
+        self.criterion = torch.nn.CrossEntropyLoss(
             ignore_index=self.dataset.vocab.stoi["<PAD>"],
+            label_smoothing=0.1,
         )
         self.best_val_loss = float("inf")
         if self.mixedPrecision:
