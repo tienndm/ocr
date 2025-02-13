@@ -76,16 +76,15 @@ class Trainer:
         self.optimizer = Adam(self.model.parameters(), lr=lr)
         if self.schedule:
             self.scheduler = StepLR(self.optimizer, step_size=10, gamma=0.1)
-        
+
         # Ví dụ sử dụng Label Smoothing Loss
-        self.criterion = LabelSmoothingLoss(
-            classes=len(self.dataset.vocab),
-            smoothing=0.1,
-            ignore_index=self.dataset.vocab.stoi["<PAD>"]
+        self.criterion = nn.CrossEntropyLoss(
+            ignore_index=self.dataset.vocab.stoi["<PAD>"], label_smoothing=0.1
         )
         self.best_val_loss = float("inf")
         if self.mixedPrecision:
             from torch.cuda.amp import GradScaler
+
             self.scaler = GradScaler()
 
     def train(self, epoch):
@@ -103,6 +102,7 @@ class Trainer:
             self.optimizer.zero_grad()
             if self.mixedPrecision:
                 from torch.cuda.amp import autocast
+
                 with autocast():
                     outputs = self.model(imgs, caps[:, :-1], tgtMask, tgtKeyPaddingMask)
                     loss = self.criterion(
@@ -124,7 +124,9 @@ class Trainer:
             epochLoss += loss.item()
         if self.schedule:
             self.scheduler.step()
-        print(f"Training Loss Epoch {epoch}: {epochLoss / len(self.trainDataloader):.4f}")
+        print(
+            f"Training Loss Epoch {epoch}: {epochLoss / len(self.trainDataloader):.4f}"
+        )
 
     def eval(self, epoch):
         self.model.eval()
@@ -159,7 +161,9 @@ class Trainer:
         avg_loss = valLoss / len(self.valDataloader)
         accuracy = total_correct / total_tokens if total_tokens > 0 else 0
         print(f"Validation Loss Epoch {epoch} (Teacher Forcing): {avg_loss:.4f}")
-        print(f"Validation Token Accuracy Epoch {epoch} (Teacher Forcing): {accuracy * 100:.2f}%")
+        print(
+            f"Validation Token Accuracy Epoch {epoch} (Teacher Forcing): {accuracy * 100:.2f}%"
+        )
 
         if avg_loss < self.best_val_loss:
             self.best_val_loss = avg_loss
@@ -171,7 +175,9 @@ class Trainer:
         for param in self.model.encoder.parameters():
             param.requires_grad = False
         # Cập nhật lại optimizer chỉ với các tham số còn lại có requires_grad=True
-        self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()))
+        self.optimizer = Adam(
+            filter(lambda p: p.requires_grad, self.model.parameters())
+        )
         print("Encoder frozen: only decoder parameters will be updated.")
 
     def __call__(self, numEpochs):
