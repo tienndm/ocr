@@ -104,6 +104,7 @@ class Trainer:
                         outputs.view(-1, outputs.size(-1)), caps[:, 1:].reshape(-1)
                     )
                 self.scaler.scale(loss).backward()
+                self.scaler.unscale_(self.optimizer)
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
@@ -226,7 +227,7 @@ class Trainer:
             print(f"Epoch {epoch + 1}/{numEpochs}")
             self.train()
             self.eval()
-            self.evaluate_auto_regressive(num_samples=1)
+            self.evaluate_auto_regressive(num_samples=3)
 
 
 if __name__ == "__main__":
