@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate")
     parser.add_argument("--schedule", action="store_true", help="Use learning rate schedule")
     parser.add_argument("--mixedPrecision", action="store_true", help="Use mixed precision training")
+    parser.add_argument("--numFirstPhaseEpochs", type=int, default=100, help="Number of epochs for first phase")
     args = parser.parse_args()
 
     my_trainer = trainer.Trainer(
@@ -40,7 +41,8 @@ def main():
         inChans=args.inChans,
         lr=args.lr,
         schedule=args.schedule,
-        mixedPrecision=args.mixedPrecision
+        mixedPrecision=args.mixedPrecision,
+        numFirstPhaseEpochs=args.numFirstPhaseEpochs,
     )
     my_trainer(args.epochs)
     my_trainer.evaluate_auto_regressive(num_samples=args.evaluateSamples)
