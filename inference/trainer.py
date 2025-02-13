@@ -223,14 +223,43 @@ class Trainer:
                     if samples_evaluated >= num_samples:
                         return
 
-    def freeze_encoder(self):
-        """Đóng băng tham số của encoder, chỉ train decoder."""
-        for param in self.model.encoder.parameters():
-            param.requires_grad = False
-        self.optimizer = Adam(
-            filter(lambda p: p.requires_grad, self.model.parameters())
-        )
-        print("Encoder frozen: only decoder parameters will be updated.")
+    def freeze_encoder_layers(self, model, freeze_percentage):
+        """
+        Đóng băng một tỷ lệ phần trăm các lớp dưới của encoder.
+        Args:
+            model: Mô hình OCRTransformer có thuộc tính encoder.
+            freeze_percentage: Tỷ lệ phần trăm các lớp encoder cần freeze (0.0 - 1.0).
+        """
+        total_layers = len(list(model.encoder.parameters()))
+        # Tính số lượng tham số cần freeze theo tỷ lệ phần trăm
+        num_freeze = int(total_layers * freeze_percentage)
+        # Lấy ra danh sách các tham số của encoder
+        for i, param in enumerate(model.encoder.parameters()):
+            if i < num_freeze:
+                param.requires_grad = False
+            else:
+                param.requires_grad = True
+
+    def update_freezing(self, trainer, current_epoch, phase_start, phase_end):
+        """
+        Cập nhật tỷ lệ đóng băng của encoder theo epoch hiện tại.
+        Args:
+            trainer: đối tượng Trainer chứa model.
+            current_epoch: epoch hiện tại.
+            phase_start: epoch bắt đầu áp dụng gradual freezing.
+            phase_end: epoch kết thúc quá trình freezing.
+        """
+        if current_epoch < phase_start:
+            freeze_percentage = 0.0
+        elif current_epoch >= phase_end:
+            freeze_percentage = 1.0
+        else:
+            freeze_percentage = (current_epoch - phase_start) / (phase_end - phase_start)
+        
+        self.freeze_encoder_layers(trainer.model, freeze_percentage)
+        trainer.optimizer = Adam(filter(lambda p: p.requires_grad, trainer.model.parameters()), lr=trainer.optimizer.param_groups[0]['lr'])
+        print(f"Epoch {current_epoch}: Freezing {freeze_percentage * 100:.1f}% of encoder layers.")
+
 
     def __call__(self, numEpochs):
         for epoch in range(1, numEpochs + 1):
@@ -238,8 +267,6 @@ class Trainer:
             self.train(epoch)
             self.eval(epoch)
             self.evaluate_auto_regressive(num_samples=3)
-            if epoch == self.phase1Epochs:
-                self.freeze_encoder()
 
 
 if __name__ == "__main__":
