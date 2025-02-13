@@ -169,12 +169,37 @@ class Trainer:
             self.best_val_loss = avg_loss
             torch.save(self.model.state_dict(), "best_model.pth")
             print("Best model saved with validation loss: {:.4f}".format(avg_loss))
+    
+    def evaluate_auto_regressive(self, num_samples=5):
+        """
+        Dùng auto-regressive decoding để sinh caption trên một số mẫu trong tập validation
+        và in ra kết quả (ground truth và predicted).
+        """
+        print("\nAuto-regressive Decoding Evaluation:")
+        self.model.eval()
+        samples_evaluated = 0
+        with torch.no_grad():
+            for imgs, caps, _, _ in self.valDataloader:
+                for i in range(imgs.size(0)):
+                    img = imgs[i].unsqueeze(0).to("cuda")  # [1, C, H, W]
+                    predicted_tokens = self.generate_caption(img)
+                    pred_caption = self.dataset.vocab.decode(predicted_tokens)
+                    gt_tokens = caps[i].tolist()
+                    try:
+                        gt_caption = self.dataset.vocab.decode(gt_tokens)
+                    except Exception as e:
+                        gt_caption = str(gt_tokens)
+                    print(f"Ground Truth: {gt_caption}")
+                    print(f"Prediction  : {pred_caption}")
+                    print("-" * 50)
+                    samples_evaluated += 1
+                    if samples_evaluated >= num_samples:
+                        return
 
     def freeze_encoder(self):
         """Đóng băng tham số của encoder, chỉ train decoder."""
         for param in self.model.encoder.parameters():
             param.requires_grad = False
-        # Cập nhật lại optimizer chỉ với các tham số còn lại có requires_grad=True
         self.optimizer = Adam(
             filter(lambda p: p.requires_grad, self.model.parameters())
         )
@@ -183,10 +208,9 @@ class Trainer:
     def __call__(self, numEpochs):
         for epoch in range(1, numEpochs + 1):
             print(f"Epoch {epoch}/{numEpochs}")
-            # Phase 1: Train toàn bộ mô hình
             self.train(epoch)
             self.eval(epoch)
-            # Nếu đã vượt qua phase 1, freeze encoder (chỉ thực hiện một lần khi chuyển phase)
+            self.evaluate_auto_regressive(num_samples=3)
             if epoch == self.phase1Epochs:
                 self.freeze_encoder()
 
