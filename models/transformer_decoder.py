@@ -20,8 +20,9 @@ class TransformerDecoder(nn.Module):
         self.tokenEmbed = nn.Embedding(vocabSize, dModel)
         self.pe = PositionalEncoding(dModel, dropout=dropout)
 
-        decoderLayer = nn.TransformerDecoderLayer(dModel, numHeads, dropout=dropout)
+        decoderLayer = nn.TransformerDecoderLayer(dModel, numHeads, dropout=dropout, activation=F.gelu)
         self.decoder = nn.TransformerDecoder(decoderLayer, num_layers=depth)
+        self.norm = nn.LayerNorm(dModel)
         self.fc = nn.Linear(dModel, vocabSize)
 
     def forward(self, tgt, memory, tgtMask=None, memory_mask=None, tgt_key_padding_mask=None, memoryKeyPaddingMask=None):
@@ -35,5 +36,6 @@ class TransformerDecoder(nn.Module):
             tgt_key_padding_mask=tgt_key_padding_mask,
             memory_key_padding_mask=memoryKeyPaddingMask,
         ).transpose(0, 1)
+        output = self.norm(output)
         output = self.fc(output)
         return output

@@ -6,16 +6,10 @@ from torch.utils.data import DataLoader, random_split
 from torch.optim.lr_scheduler import StepLR
 from tqdm import tqdm
 
-from data_pipeline.utils import collate_fn
+from data_pipeline.utils import collate_fn, generateSquareSubsequentMask
 from data_pipeline.dataset import SymbolicOCRDataset
 from models.ocr import OCRTransformer
 from torch.cuda.amp import autocast, GradScaler
-
-
-def generate_square_subsequent_mask(sz):
-    mask = torch.triu(torch.ones(sz, sz), diagonal=1)
-    mask = mask.masked_fill(mask == 1, float("-inf"))
-    return mask
 
 
 class Trainer:
@@ -31,7 +25,16 @@ class Trainer:
         encoderNumHeads: int = 12,
         decoderNumHeads: int = 8,
         dropout: float = 0.1,
+        imgSize: int = 224,
+        patchSize: int = 16,
+        inChans: int = 3,
+        lr: float = 1e-5,
+        schedule: bool = False,
+        mixedPrecision: bool = False,
     ):
+        self.schedule = schedule
+        self.mixedPrecision = mixedPrecision
+
         self.dataset = SymbolicOCRDataset(rootDir, freqThreshold=1)
         if vocabPath and os.path.exists(vocabPath):
             self.load_vocab(vocabPath)
@@ -58,22 +61,28 @@ class Trainer:
         )
 
         self.model = OCRTransformer(
-            vocabSize=len(self.dataset.vocab),
-            dropout=dropout,
+            imgSize=imgSize,
+            patchSize=patchSize,
+            inChans=inChans,
             dModel=dModel,
             encoderDepth=encoderDepth,
             decoderDepth=decoderDepth,
             encoderNumHeads=encoderNumHeads,
             decoderNumHeads=decoderNumHeads,
+            vocabSize=len(self.dataset.vocab),
+            dropout=dropout,
         )
         self.model.to("cuda")
-        self.optimizer = Adam(self.model.parameters(), lr=1e-5)
-        self.scheduler = StepLR(self.optimizer, step_size=10, gamma=0.1)
+        self.optimizer = Adam(self.model.parameters(), lr=lr)
+        if self.schedule:
+            self.scheduler = StepLR(self.optimizer, step_size=10, gamma=0.1)
+        
         self.criterion = torch.nn.CrossEntropyLoss(
             ignore_index=self.dataset.vocab.stoi["<PAD>"]
         )
         self.best_val_loss = float("inf")
-        self.scaler = GradScaler()
+        if self.mixedPrecision:
+            self.scaler = GradScaler()
 
     def train(self):
         self.model.train()
@@ -88,17 +97,27 @@ class Trainer:
                 tgtKeyPaddingMask.to("cuda", dtype=torch.bool),
             )
             self.optimizer.zero_grad()
-            with autocast():
+            if self.mixedPrecision:
+                with autocast():
+                    outputs = self.model(imgs, caps[:, :-1], tgtMask, tgtKeyPaddingMask)
+                    loss = self.criterion(
+                        outputs.view(-1, outputs.size(-1)), caps[:, 1:].reshape(-1)
+                    )
+                self.scaler.scale(loss).backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            else:
                 outputs = self.model(imgs, caps[:, :-1], tgtMask, tgtKeyPaddingMask)
                 loss = self.criterion(
                     outputs.view(-1, outputs.size(-1)), caps[:, 1:].reshape(-1)
                 )
-            self.scaler.scale(loss).backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                self.optimizer.step()
             epochLoss += loss.item()
-        self.scheduler.step()
+        if self.schedule:
+            self.scheduler.step()
         print(f"Training Loss: {epochLoss / len(self.trainDataloader):.4f}")
 
     def eval(self):
@@ -155,11 +174,11 @@ class Trainer:
                 # Use all but the last token as input if sequence >1
                 if tgt.size(1) > 1:
                     tgt_input = tgt[:, :-1]  # exclude the predicted token position
-                    mask = generate_square_subsequent_mask(tgt_input.size(1)).to("cuda")
+                    mask = generateSquareSubsequentMask(tgt_input.size(1)).to("cuda")
                     outputs = self.model(img, tgt_input, mask, None)
                     next_token_logits = outputs[0, -1, :]
                 else:
-                    mask = generate_square_subsequent_mask(tgt.size(1)).to("cuda")
+                    mask = generateSquareSubsequentMask(tgt.size(1)).to("cuda")
                     outputs = self.model(img, tgt, mask, None)
                     next_token_logits = outputs[0, -1, :]
                 next_token = next_token_logits.argmax(dim=-1).item()

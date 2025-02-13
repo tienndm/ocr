@@ -19,6 +19,5 @@ def collate_fn(batch, vocab):
 
     tgtMask = generateSquareSubsequentMask(tgtSeq.size(1) - 1)
     
-    # Slice tgtSeq to match decoder input length
     tgtKeyPaddingMask = (tgtSeq[:, :-1] == vocab.stoi["<PAD>"])
     return imgs, tgtSeq, tgtMask, tgtKeyPaddingMask

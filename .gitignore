@@ -1,2 +1,4 @@
 data/
 best_model.pth
+.vscode/settings.json
+data_pipeline/__pycache__/vocabulary.cpython-310.pyc

@@ -34,7 +34,7 @@ class Vocabulary:
         return [self.stoi.get(token, self.stoi["<UNK>"]) for token in tokenized_text]
     
     def decode(self, indices):
-        tokens = [self.itos.get(str(idx), "<UNK>") for idx in indices]
+        tokens = [self.itos.get(int(idx), "<UNK>") for idx in indices if int(idx) != 0]
         return " ".join(tokens)
     
     def save_vocab_json(self, file_path):

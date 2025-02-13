@@ -17,18 +17,20 @@ class ViTEncoder(nn.Module):
     ):
         super(ViTEncoder, self).__init__()
         self.patchEmbed = PatchEmbed(imgSize, patchSize, inChans, dModel)
+        self.norm = nn.LayerNorm(dModel)
         nPatches = self.patchEmbed.nPatches
 
         self.posEmbed = nn.Parameter(torch.randn(1, nPatches, dModel))
         self.posDropout = nn.Dropout(p=dropout)
 
         encoderLayer = nn.TransformerEncoderLayer(
-            dModel, numHeads, dropout=dropout
+            dModel, numHeads, dropout=dropout, activation=F.gelu,
         )
         self.encoder = nn.TransformerEncoder(encoderLayer, num_layers=depth)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.patchEmbed(x)
+        x = self.norm(x)
         x = x + self.posEmbed
         x = self.posDropout(x)
 
