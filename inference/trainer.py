@@ -169,7 +169,34 @@ class Trainer:
             self.best_val_loss = avg_loss
             torch.save(self.model.state_dict(), "best_model.pth")
             print("Best model saved with validation loss: {:.4f}".format(avg_loss))
-    
+
+    def generate_caption(self, img, max_length=100):
+        """
+        Auto-regressive Decoding: Generate caption for a single image.
+        """
+        self.model.eval()
+        generated = [self.dataset.vocab.stoi["<SOS>"]]
+        with torch.no_grad():
+            for _ in range(max_length):
+                tgt = (
+                    torch.tensor(generated, dtype=torch.long).unsqueeze(0).to("cuda")
+                )  # shape: [1, seq_len]
+                # Use all but the last token as input if sequence >1
+                if tgt.size(1) > 1:
+                    tgt_input = tgt[:, :-1]  # exclude the predicted token position
+                    mask = generateSquareSubsequentMask(tgt_input.size(1)).to("cuda")
+                    outputs = self.model(img, tgt_input, mask, None)
+                    next_token_logits = outputs[0, -1, :]
+                else:
+                    mask = generateSquareSubsequentMask(tgt.size(1)).to("cuda")
+                    outputs = self.model(img, tgt, mask, None)
+                    next_token_logits = outputs[0, -1, :]
+                next_token = next_token_logits.argmax(dim=-1).item()
+                generated.append(next_token)
+                if next_token == self.dataset.vocab.stoi["<EOS>"]:
+                    break
+        return generated
+
     def evaluate_auto_regressive(self, num_samples=5):
         """
         Dùng auto-regressive decoding để sinh caption trên một số mẫu trong tập validation
