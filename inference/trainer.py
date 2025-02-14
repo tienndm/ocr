@@ -75,7 +75,7 @@ class Trainer:
         self.model.to("cuda")
         self.optimizer = Adam(self.model.parameters(), lr=lr)
         if self.schedule:
-            self.scheduler = StepLR(self.optimizer, step_size=10, gamma=0.1)
+            self.scheduler = StepLR(self.optimizer, step_size=10, gamma=0.9)
 
         # Ví dụ sử dụng Label Smoothing Loss
         self.criterion = nn.CrossEntropyLoss(
