@@ -1,7 +1,0 @@
-data/
-best_model.pth
-.vscode/settings.json
-data_pipeline/__pycache__/
-__pycache__/
-models/__pycache__/
-inference/__pycache__/
